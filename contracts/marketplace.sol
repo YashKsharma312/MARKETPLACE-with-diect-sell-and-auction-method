@@ -1,145 +1,360 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.9;
+pragma solidity ^0.8.4;
 
+import "@openzeppelin/contracts/utils/Counters.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract Marketplace is ERC721, Ownable {
-    constructor() ERC721("MyToken", "MTK") {}
 
-    function safeMint(address to, uint256 tokenId) public onlyOwner {
-        _safeMint(to, tokenId);
-    }
-    mapping(uint=>sellerInfo)public MarketItem;
-    mapping (uint=>bool) public depositedNft;
+contract Marketplace {
 
-    uint public englishEndAt;
-    bool public englishStarted;
-    bool public englishEnded;
-    address public highestBidder;
-    uint public highestBid;
-    mapping(address => uint) public bids;
+    //Providing id's to nfts to keep their track
+    using Counters for Counters.Counter;
+    Counters.Counter private _items;
 
-    uint public  dutchStartingPrice;
-    uint public  dutchStartAt;
-    uint public  dutchExpiresAt;
-    uint public  dutchDiscountRate;
+    address public owner;//Marketplace owner address
 
-    struct sellerInfo{
+
+    // structure to marketplace item
+    struct MarketplaceItem {
+        uint itemId;
+        address nftContract;
+        uint tokenId;
         address payable seller;
-        uint nftId;
-        uint nftPrice;
+        address payable owner;
+        uint price;
+        bool sold;
+        uint duration; 
+        uint minPrice;//for dutchbid
+
+    }
+    
+    mapping(uint => MarketplaceItem) private idToMarketplaceItem;//mapping for marketplace item with itemid
+
+    //Structure for english auction
+    struct englishAuctionstr{
+      uint englishEndAt;
+      bool englishStarted;
+      bool englishEnded;
+      uint highestBid;
+      address   highestBidder;
     }
 
-    //DIRECT SALE SYSTEM
+    mapping (uint=>englishAuctionstr) private idToEnglishAuction;//mapping for english auction items  with itemid
+    mapping(address => uint) public bids;//mapping to keep track of bids
 
-    function directDeposit(uint _id,uint _price) public {
-      sellerInfo memory seller=sellerInfo(payable(msg.sender),_id,_price*10**18);
-      MarketItem[_id]=seller;
-      transferFrom(msg.sender,address(this),_id);
-      depositedNft[_id]=true;
+    //Structure for dutch auction
+    struct DutchAuctionstr {
+      uint   dutchStartingPrice;
+      uint   dutchStartAt;
+      uint   dutchExpiresAt;
+      uint   dutchDiscountRate;
     }
 
-    function directBuy(uint id) public payable {
-        ERC721(address(this)).approve(msg.sender, id);
-        address payable _sellerAddress=MarketItem[id].seller;
-        uint price=MarketItem[id].nftPrice;
-        require(msg.value == price, "Not adequate ethers");
-        bool sent=_sellerAddress.send(msg.value);
-        require(sent,"transfer failed");
-        safeTransferFrom(address(this),msg.sender,id);
-        depositedNft[id]=false; 
+    mapping (uint=>DutchAuctionstr) private idToDutchAuction;//mapping for dutch auction items  with itemid
+
+    //Structure for pending returns in english bids
+    struct PendingReturn{
+      address[] previousBidder;
+      uint[] previousBid;
+   }
+
+  mapping(uint=>PendingReturn) private PendingReturns;//mapping for pendingreturns structure with itemid
+    
+
+    // declare a event for when a item is created on marketplace
+    event MarketplaceItemCreated(
+        uint256 indexed itemId,
+        address indexed nftContract,
+        uint256 indexed tokenId,
+        address seller,
+        address owner,
+        uint256 price,
+        bool sold
+    );
+
+    constructor() {
+        owner = msg.sender;
+    }
+
+    
+    modifier onlyOwner {
+      require(msg.sender == owner);
+      _;
+   }
+
+    
+
+    // places an item for sale on fixed price in marketplace
+    function fixedPricesale(
+        address nftContract,
+        uint256 tokenId,
+        uint256 price
+    ) public {
+
+        require(price > 0, "Price must be at least 1 wei");
+
+        require(msg.sender==IERC721(nftContract).ownerOf(tokenId),"You are not the owner of this nft");
+
+        _items.increment();
+        uint itemId = _items.current();
+
+        idToMarketplaceItem[itemId] = MarketplaceItem(
+            itemId,
+            nftContract,
+            tokenId,
+            payable(msg.sender),
+            payable(address(0)),
+            price,
+            false,
+            0,0
+        );
+
+        IERC721(nftContract).transferFrom(msg.sender, address(this), tokenId);
+
+        emit MarketplaceItemCreated(
+            itemId,
+            nftContract,
+            tokenId,
+            msg.sender,
+            address(0),
+            price,
+            false
+        );
+    }
+
+    //function to buy nft on fixedprice basic
+    function fixedPricebuy( uint256 itemId)
+        public
+        payable
+    {
+        require(itemId > 0 ,
+         "item doesn't exist");
+
+        uint256 price = idToMarketplaceItem[itemId].price;
+        uint256 tokenId = idToMarketplaceItem[itemId].tokenId;
+        address nftContract = idToMarketplaceItem[itemId].nftContract;
+
+        require(
+            msg.value >= price,
+            "Please submit the asking price in order to complete the purchase"
+        );
+
+        idToMarketplaceItem[itemId].seller.transfer(msg.value);
+        IERC721(nftContract).transferFrom(address(this), msg.sender, tokenId);
+        idToMarketplaceItem[itemId].owner = payable(msg.sender);
+        idToMarketplaceItem[itemId].sold = true;
+
     }
 
     //ENGLISH AUCTION SYSTEM
 
-     function englishStart(uint _id,uint _price,uint duration) external {
-         sellerInfo memory seller=sellerInfo(payable(msg.sender),_id,_price*10**18);
-         MarketItem[_id]=seller;
-        require(!englishStarted, "started");
-        transferFrom(msg.sender, address(this), _id);
-        englishStarted = true;
-        englishEndAt = block.timestamp + duration;
-        highestBid = _price;
-        depositedNft[_id]=true;
+     //function to put nft on english auction for sale
+     function englishStart(address nftContract, uint tokenId,uint duration,uint price) external {
+
+         require(msg.sender==IERC721(nftContract).ownerOf(tokenId),"You are not the owner of this nft");
+
+        _items.increment();
+
+        uint itemId = _items.current();
+
+        idToMarketplaceItem[itemId] = MarketplaceItem(
+            itemId,
+            nftContract,
+            tokenId,
+            payable(msg.sender),
+            payable(address(0)),
+            price,
+            false,
+            duration,0
+        );
+
+       
+
+        require(!idToEnglishAuction[itemId].englishStarted, "started");
+        IERC721(nftContract).transferFrom(msg.sender, address(this), tokenId);
+        idToEnglishAuction[itemId].englishStarted = true;
+        idToEnglishAuction[itemId].englishEndAt = block.timestamp + duration;
+        idToEnglishAuction[itemId].highestBid = price;
+
+        emit MarketplaceItemCreated(
+            itemId,
+            nftContract,
+            tokenId,
+            msg.sender,
+            address(0),
+            price,
+            false
+        );
+
     }
 
-    function englishBid() external payable {
-        require(englishStarted, "not started");
-        require(block.timestamp < englishEndAt, "ended");
-        require(msg.value > highestBid, "value > highest");
 
-        if (highestBidder != address(0)) {
-            bids[highestBidder] += highestBid;
+    //function to place bid
+    function englishBid(uint itemId) external payable {
+
+        require(idToEnglishAuction[itemId].englishStarted, "not started");
+        require(block.timestamp < idToEnglishAuction[itemId].englishEndAt, "ended");
+        require(msg.value > idToEnglishAuction[itemId].highestBid, "value > highest");
+
+        if (idToEnglishAuction[itemId].highestBidder != address(0)) {
+            
+           PendingReturns[itemId].previousBidder.push(
+            idToEnglishAuction[itemId].highestBidder
+            );
+
+            PendingReturns[itemId].previousBid.push(
+               idToEnglishAuction[itemId].highestBid
+            );
         }
+       
 
-        highestBidder = msg.sender;
-        highestBid = msg.value;
+        idToEnglishAuction[itemId].highestBidder = msg.sender;
+        idToEnglishAuction[itemId].highestBid = msg.value;
         
     }
-    function englishWithdraw() external {
-        uint bal = bids[msg.sender];
-        bids[msg.sender] = 0;
-        payable(msg.sender).transfer(bal);
-    }
 
-    function englishEnd(uint _id) external onlyOwner {
-        ERC721(address(this)).approve(msg.sender, _id);
-        address payable _seller=MarketItem[_id].seller;
-        require(englishStarted, "not started");
-        require(block.timestamp >= englishEndAt, "not ended");
-        require(!englishEnded, "ended");
+   
+    //function to end bid and transfer nft and amount to seller
+    function englishEnd( uint itemId) external payable onlyOwner {
 
-        englishEnded = true;
-        if (highestBidder != address(0)) {
-            safeTransferFrom(address(this), highestBidder, _id);
-            _seller.transfer(highestBid);
-        } else {
-            safeTransferFrom(address(this), _seller, _id);
+        uint256 tokenId = idToMarketplaceItem[itemId].tokenId;
+        address nftContract = idToMarketplaceItem[itemId].nftContract;
+        address seller = idToMarketplaceItem[itemId].seller;
+
+        require(idToEnglishAuction[itemId].englishStarted, "not started");
+        require(block.timestamp >= idToEnglishAuction[itemId].englishEndAt, "not ended");
+        require(!idToEnglishAuction[itemId].englishEnded, "ended");
+
+        idToEnglishAuction[itemId].englishEnded = true;
+
+        if (idToEnglishAuction[itemId].highestBidder != address(0)) {
+
+            IERC721(nftContract).transferFrom(address(this), idToEnglishAuction[itemId].highestBidder, tokenId);
+
+            payable(seller).transfer(
+            idToEnglishAuction[itemId].highestBid
+        );
+
+            idToMarketplaceItem[itemId].owner = payable(msg.sender);
+            idToMarketplaceItem[itemId].sold = true;
+
+        } 
+
+        else {
+
+           IERC721(nftContract).transferFrom(address(this),idToMarketplaceItem[itemId].seller, tokenId);
+           idToMarketplaceItem[itemId].sold = true;
+
         }
-        depositedNft[_id]=false;
+
+        for(uint i = 0; i < PendingReturns[itemId].previousBidder.length; i++) {
+            (bool success,) = PendingReturns[itemId].previousBidder[i].call{value: PendingReturns[itemId].previousBid[i]}("");
+            require(success,"Transfer Failed");}
     }
+
 
     //DUTCH AUCTION SYSTEM
 
-    function dutchBid(uint _id,uint _price,uint duration,uint rate) public {
-         sellerInfo memory seller=sellerInfo(payable(msg.sender),_id,_price*10**18);
-         transferFrom(msg.sender, address(this), _id);
-         MarketItem[_id]=seller;
-         dutchStartingPrice=_price*10**18;
-         dutchStartAt = block.timestamp;
-         dutchExpiresAt = block.timestamp + duration;
-         dutchDiscountRate = rate;
-         require(_price >= rate * duration, " price < min");
+    //function to put nft on dutch auction for sell
+    function dutchBid(address nftContract, uint tokenId,uint duration,uint rate,uint price,uint minprice) public {
+
+        require(msg.sender==IERC721(nftContract).ownerOf(tokenId),"You are not the owner of this nft");
+
+        _items.increment();
+        uint256 itemId = _items.current();
+
+        idToMarketplaceItem[itemId] = MarketplaceItem(
+            itemId,
+            nftContract,
+            tokenId,
+            payable(msg.sender),
+            payable(address(0)),
+            price,
+            false,
+            duration,
+            minprice
+        );
+
+
+        IERC721(nftContract).transferFrom(msg.sender, address(this), tokenId);
+        idToDutchAuction[itemId].dutchStartingPrice=price;
+        idToDutchAuction[itemId].dutchStartAt = block.timestamp;
+        idToDutchAuction[itemId].dutchExpiresAt = block.timestamp + duration;
+        idToDutchAuction[itemId].dutchDiscountRate = rate;
+
+
+        emit MarketplaceItemCreated(
+            itemId,
+            nftContract,
+            tokenId,
+            msg.sender,
+            address(0),
+            price,
+            false
+        );
+
     }
 
-    function DutchgetPrice() public view returns (uint) {
-        uint timeElapsed = block.timestamp - dutchStartAt;
-        uint discount = (dutchDiscountRate*10**18) * timeElapsed;
-        return dutchStartingPrice - discount;
+
+     //function to get price of nft every second
+     function DutchgetPrice(uint itemId) public view returns (uint) {
+
+        uint timeElapsed = block.timestamp - idToDutchAuction[itemId].dutchStartAt;
+        uint discount = idToDutchAuction[itemId].dutchDiscountRate * timeElapsed;
+
+        return idToDutchAuction[itemId].dutchStartingPrice - discount;
+
     }
 
-    function getBack(uint _id ) public {
-        ERC721(address(this)).approve(msg.sender, _id);
-         address payable seller=MarketItem[_id].seller;
-         require(msg.sender==seller,"Not NFT owner");
-        require(block.timestamp>dutchExpiresAt,"Auction still going");
-        safeTransferFrom(address(this), msg.sender, _id);
-    }
 
-    function buy(uint _id) external payable {
-        require(block.timestamp < dutchExpiresAt, "auction expired");
-        address payable seller=MarketItem[_id].seller;
-        ERC721(address(this)).approve(msg.sender, _id);
-        uint price = DutchgetPrice();
+    //function to buy nft 
+    function buyDutch( uint itemId) external payable {
+
+        require(block.timestamp < idToDutchAuction[itemId].dutchExpiresAt, "auction expired");
+
+        uint minPrice=idToMarketplaceItem[itemId].minPrice;
+        uint tokenId = idToMarketplaceItem[itemId].tokenId;
+        address nftContract = idToMarketplaceItem[itemId].nftContract;
+        address payable seller=idToMarketplaceItem[itemId].seller;
+
+
+        uint price = DutchgetPrice(itemId);
+
+         if(DutchgetPrice(itemId)<=minPrice)
+         {
+             price=minPrice;
+         }
+
         require(msg.value >= price, "ETH < price");
+
         bool sent=seller.send(price);
         require(sent,"transfer failed");
-        transferFrom(address(this), msg.sender,_id);
+
+        IERC721(nftContract).transferFrom(address(this), msg.sender, tokenId);
+        idToMarketplaceItem[itemId].sold = true;
+
         uint refund = msg.value - price;
         if (refund > 0) {
             payable(msg.sender).transfer(refund);
         }
    }
 
+    // function to cancel listing of an nft
+    function cancelListing(uint itemId) external {
+     address nftContract = idToMarketplaceItem[itemId].nftContract;  
+     address seller = idToMarketplaceItem[itemId].seller;  
+     uint tokenId = idToMarketplaceItem[itemId].tokenId;  
+
+        // need to transfer nft to original owner
+  
+         IERC721(nftContract).transferFrom(
+         address(this),
+         seller,
+         tokenId);
+
+        // delete listing object
+        delete idToMarketplaceItem[itemId];
+    }
+
+   
 }
