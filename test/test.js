@@ -69,6 +69,14 @@ describe("Marketplace Contract",function(){
         await contract.connect(owner).englishEnd(1);
         expect(await contract1.ownerOf(1)).to.equal(addr3.address);
 })
+        
+        it("6) cancel listing of NFT",async function (){
+        await contract1.safeMint(addr1.address,1);
+        await contract1.connect(addr1).approve(contract.address,1);
+        await contract.connect(addr1).englishStart(contract1.address,1,20,1);
+        await contract.connect(addr1).cancelListing(1);
+        expect(await contract1.ownerOf(1)).to.equal(addr1.address);
+       })
 
        
     
