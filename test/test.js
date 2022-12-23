@@ -63,8 +63,8 @@ describe("Marketplace Contract",function(){
         await contract1.safeMint(addr1.address,1);
         await contract1.connect(addr1).approve(contract.address,1);
         await contract.connect(addr1).englishStart(contract1.address,1,20,1);
-        await contract.connect(addr2).englishBid({value:ethers.utils.parseEther("2")});
-        await contract.connect(addr3).englishBid({value:ethers.utils.parseEther("3")});
+        await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")});
+        await contract.connect(addr3).englishBid(1,{value:ethers.utils.parseEther("3")});
         await sleep(25000);
         await contract.connect(owner).englishEnd(1);
         expect(await contract1.ownerOf(1)).to.equal(addr3.address);
