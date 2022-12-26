@@ -1,4 +1,5 @@
 const{expect}=require("chai");
+const { ethers } = require('hardhat');
 const { BigNumber, utils } = require("ethers");
 
 
@@ -26,17 +27,24 @@ describe("Marketplace Contract",function(){
 
     describe("Test contract", function () {
 
-        it("1)Should set right owner",async function(){
-        expect(await contract.owner()).to.equal(owner.address);})
+        it("Providing 0 as amount while listing",async function(){
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            expect(await contract.connect(addr1).fixedPricesale(contract1.address,1,0)).to.revertedWith("Price must be at least 1 wei");
+        })
 
 
-        it("2)Should assign the token to the address",async function(){
-        await contract1.safeMint(addr1.address,1);
-        expect(await contract1.balanceOf(addr1.address)).to.equal(1);
+
+        it("Check if the address listing nft is not owner of nft ",async function(){
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            expect(await contract.connect(addr2).fixedPricesale(contract1.address,1,0)).to.revertedWith("You are not the owner of this nft");
     });
 
 
-        it("3)Check for fixedPricesellSell",async function (){
+
+
+        it("Check for fixedPricesellSell",async function (){
         await contract1.safeMint(addr1.address,1);
         await contract1.connect(addr1).approve(contract.address,1);
         await contract.connect(addr1).fixedPricesale(contract1.address,1,2);
@@ -45,7 +53,92 @@ describe("Marketplace Contract",function(){
     })
 
 
-        it("4)Check for DutchAuction",async function (){
+
+
+        it("Check if item id dosen't exist",async function(){
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            await contract.connect(addr1).fixedPricesale(contract1.address,1,2);
+            expect(await contract.connect(addr2).fixedPricebuy(2,{value:ethers.utils.parseEther("2")})).to.revertedWith("item doesn't exist")
+        })
+
+
+
+        it("Check send amount is less than listed",async function(){
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            await contract.connect(addr1).fixedPricesale(contract1.address,1,2);
+            expect(await contract.connect(addr2).fixedPricebuy(2,{value:ethers.utils.parseEther("1")})).to.revertedWith("Please submit the asking price in order to complete the purchase")
+        })
+
+
+
+        it(" Check if listing nft in english auction is done by owner",async function(){
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            expect(await contract.connect(addr2).englishStart(contract1.address,1,20,1)).to.revertedWith("You are not the owner of this nft")
+        })
+
+
+
+
+        it(" Revert if english auction already started",async function(){
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            await contract.connect(addr1).englishStart(contract1.address,1,20,1);
+            expect(await contract.connect(addr1).englishStart(contract1.address,1,20,1)).to.revertedWith("started");
+        })
+
+
+
+        it("Check if item dosen't exist while bid",async function(){
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            await contract.connect(addr1).englishStart(contract1.address,1,20,1);
+            expect(await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")})).to.revertedWith("item doesn't exist")
+
+        })
+
+
+
+        it("Revert if bidding after auction ended",async function(){
+            function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            await contract.connect(addr1).englishStart(contract1.address,1,20,1);
+            await sleep(20000);
+            expect()
+            expect(await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")})).to.revertedWith("ended")
+        })
+
+
+
+
+        it("Revert if auction has not started while calling endfunction",async function(){
+            expect(await contract.connect(owner).englishEnd(1)).to.revertedWith("not started")
+        })
+
+
+
+        it("Check for EnglishAuction",async function (){
+            function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            await contract.connect(addr1).englishStart(contract1.address,1,20,1);
+            await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")});
+            await contract.connect(addr3).englishBid(1,{value:ethers.utils.parseEther("3")});
+            await sleep(25000);
+            await contract.connect(owner).englishEnd(1);
+            expect(await contract1.ownerOf(1)).to.equal(addr3.address);
+    })
+
+
+
+        it("Check for DutchAuction",async function (){
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
             await contract.connect(addr1).dutchBid(contract1.address,1,100,1,100,10);
@@ -56,34 +149,62 @@ describe("Marketplace Contract",function(){
 
 
 
-        it("5)Check for EnglishAuction",async function (){
-        function sleep(ms) {
-            return new Promise(resolve => setTimeout(resolve, ms));
-        }
-        await contract1.safeMint(addr1.address,1);
-        await contract1.connect(addr1).approve(contract.address,1);
-        await contract.connect(addr1).englishStart(contract1.address,1,20,1);
-        await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")});
-        await contract.connect(addr3).englishBid(1,{value:ethers.utils.parseEther("3")});
-        await sleep(25000);
-        await contract.connect(owner).englishEnd(1);
-        expect(await contract1.ownerOf(1)).to.equal(addr3.address);
-})
-        
-        it("6) cancel listing of NFT",async function (){
+        it()
+
+
+
+
+
+       it(" cancel listing of NFT",async function (){
         await contract1.safeMint(addr1.address,1);
         await contract1.connect(addr1).approve(contract.address,1);
         await contract.connect(addr1).englishStart(contract1.address,1,20,1);
         await contract.connect(addr1).cancelListing(1);
         expect(await contract1.ownerOf(1)).to.equal(addr1.address);
        })
-        
-        
-        it("7) check if the nft transfer to marketplace",async function (){
+
+
+
+       
+       it(" check if the nft transfer to marketplace",async function (){
         await contract1.safeMint(addr1.address,1);
         await contract1.connect(addr1).approve(contract.address,1);
         await contract.connect(addr1).englishStart(contract1.address,1,20,1);
         expect(await contract1.ownerOf(1)).to.equal(contract.address);
+       })
+
+
+
+       it(" Check if one buying interpret to other buying option",async function(){
+       
+        await contract1.safeMint(addr1.address,1);
+        await contract1.connect(addr1).approve(contract.address,1);
+        await contract.connect(addr1).englishStart(contract1.address,1,20,1);
+        await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")});
+        expect(await contract.connect(addr3).fixedPricebuy(1,{value:ethers.utils.parseEther("2")})).to.revertedWith("INVALID BUY OPTION");
+       })
+
+
+
+       it(" Check for buyers bid",async function(){
+        await contract1.safeMint(addr1.address,1);
+        await contract1.connect(addr1).approve(contract.address,1);
+        await contract.connect(addr1).englishStart(contract1.address,1,20,1);
+        await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")});
+        await contract.connect(addr3).englishBid(1,{value:ethers.utils.parseEther("3")});
+        expect(await contract.bids(1,addr3.address)).to.equal(BigInt(3000000000000000000));
+       })
+
+
+
+       it(" Check for Dutchgetprice",async function(){
+        function sleep(ms) {
+           return new Promise(resolve => setTimeout(resolve, ms));
+        }
+        await contract1.safeMint(addr1.address,1);
+        await contract1.connect(addr1).approve(contract.address,1);
+        await contract.connect(addr1).dutchBid(contract1.address,1,100,1,100,10);
+        expect(await contract. DutchgetPrice(1)).to.equal(100);
        })
 
        
