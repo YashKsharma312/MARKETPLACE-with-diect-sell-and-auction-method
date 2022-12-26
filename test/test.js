@@ -149,10 +149,6 @@ describe("Marketplace Contract",function(){
 
 
 
-        it()
-
-
-
 
 
        it(" cancel listing of NFT",async function (){
