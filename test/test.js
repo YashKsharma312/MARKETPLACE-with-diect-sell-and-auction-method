@@ -112,6 +112,17 @@ describe("Marketplace Contract",function(){
             expect()
             expect(await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")})).to.revertedWith("ended")
         })
+        
+        
+        it("check for highest bid ",async function(){
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            await contract.connect(addr1).englishStart(contract1.address,1,20,1);
+            await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")});
+            await contract.connect(addr3).englishBid(1,{value:ethers.utils.parseEther("3")});
+            expect(await contract.getHighestBid(1)).to.equal(BigInt(3000000000000000000));
+        })
+
 
 
 
