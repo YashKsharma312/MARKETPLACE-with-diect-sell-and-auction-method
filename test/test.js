@@ -3,7 +3,7 @@ const { ethers } = require('hardhat');
 const { BigNumber, utils } = require("ethers");
 
 
-describe("Marketplace Contract",function(){
+describe("Marketplace Contract", function(){
     let TestContract;
     let NFTcontract;
     let contract;
@@ -30,7 +30,7 @@ describe("Marketplace Contract",function(){
         it("Providing 0 as amount while listing",async function(){
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
-            expect(await contract.connect(addr1).fixedPricesale(contract1.address,1,0)).to.revertedWith("Price must be at least 1 wei");
+            await expect( contract.connect(addr1).fixedPricesale(contract1.address,1,0)).to.be.revertedWith("Price must be at least 1 wei");
         })
 
 
@@ -38,7 +38,7 @@ describe("Marketplace Contract",function(){
         it("Check if the address listing nft is not owner of nft ",async function(){
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
-            expect(await contract.connect(addr2).fixedPricesale(contract1.address,1,0)).to.revertedWith("You are not the owner of this nft");
+            await expect( contract.connect(addr2).fixedPricesale(contract1.address,1,1)).to.revertedWith("You are not the owner of this nft");
     });
 
 
@@ -59,7 +59,7 @@ describe("Marketplace Contract",function(){
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
             await contract.connect(addr1).fixedPricesale(contract1.address,1,2);
-            expect(await contract.connect(addr2).fixedPricebuy(2,{value:ethers.utils.parseEther("2")})).to.revertedWith("item doesn't exist")
+            await expect( contract.connect(addr2).fixedPricebuy(2,{value:ethers.utils.parseEther("2")})).to.revertedWith("item doesn't exist")
         })
 
 
@@ -68,7 +68,7 @@ describe("Marketplace Contract",function(){
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
             await contract.connect(addr1).fixedPricesale(contract1.address,1,2);
-            expect(await contract.connect(addr2).fixedPricebuy(2,{value:ethers.utils.parseEther("1")})).to.revertedWith("Please submit the asking price in order to complete the purchase")
+            await expect( contract.connect(addr2).fixedPricebuy(1,{value:ethers.utils.parseEther("1")})).to.revertedWith("Please submit the asking price in order to complete the purchase")
         })
 
 
@@ -76,7 +76,7 @@ describe("Marketplace Contract",function(){
         it(" Check if listing nft in english auction is done by owner",async function(){
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
-            expect(await contract.connect(addr2).englishStart(contract1.address,1,20,1)).to.revertedWith("You are not the owner of this nft")
+            await expect( contract.connect(addr2).englishStart(contract1.address,1,20,1)).to.revertedWith("You are not the owner of this nft")
         })
 
 
@@ -86,7 +86,7 @@ describe("Marketplace Contract",function(){
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
             await contract.connect(addr1).englishStart(contract1.address,1,20,1);
-            expect(await contract.connect(addr1).englishStart(contract1.address,1,20,1)).to.revertedWith("started");
+            await expect( contract.connect(contract).englishStart(contract1.address,1,20,1)).to.revertedWith("started");
         })
 
 
@@ -95,7 +95,7 @@ describe("Marketplace Contract",function(){
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
             await contract.connect(addr1).englishStart(contract1.address,1,20,1);
-            expect(await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")})).to.revertedWith("item doesn't exist")
+            await expect( contract.connect(addr2).englishBid(2,{value:ethers.utils.parseEther("2")})).to.revertedWith("item doesn't exist")
 
         })
 
@@ -109,11 +109,10 @@ describe("Marketplace Contract",function(){
             await contract1.connect(addr1).approve(contract.address,1);
             await contract.connect(addr1).englishStart(contract1.address,1,20,1);
             await sleep(20000);
-            expect()
-            expect(await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")})).to.revertedWith("ended")
+            await expect( contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")})).to.revertedWith("ended")
         })
-        
-        
+
+
         it("check for highest bid ",async function(){
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
@@ -126,9 +125,8 @@ describe("Marketplace Contract",function(){
 
 
 
-
         it("Revert if auction has not started while calling endfunction",async function(){
-            expect(await contract.connect(owner).englishEnd(1)).to.revertedWith("not started")
+        await expect( contract.connect(owner).englishEnd(1)).to.revertedWith("item doesn't exist")
         })
 
 
@@ -158,11 +156,12 @@ describe("Marketplace Contract",function(){
 
         })
 
-        
+
+
         it("Check if the entry amount in dutch auction is less than or equal to 0",async function(){
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
-            expect(await contract.connect(addr1).dutchBid(contract1.address,1,100,1,100,10)).to.revertedWith("Price must be at least 1 wei")
+            await expect( contract.connect(addr1).dutchBid(contract1.address,1,100,1,0,10)).to.revertedWith("Price must be at least 1 wei")
         })
 
         
@@ -172,9 +171,9 @@ describe("Marketplace Contract",function(){
             }
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
-            await contract.connect(addr1).dutchBid(contract1.address,1,100,1,100,10);
-            await sleep(100);
-            expect(await contract.connect(addr2).buyDutch(1,{value:ethers.utils.parseEther("100")})).to.revertedWith("auction expired")
+            await contract.connect(addr1).dutchBid(contract1.address,1,10,1,10,2);
+            await sleep(11000);
+            await expect( contract.connect(addr2).buyDutch(1,{value:ethers.utils.parseEther("100")})).to.revertedWith("auction expired")
         })
 
 
@@ -186,12 +185,14 @@ describe("Marketplace Contract",function(){
         await contract.connect(addr1).cancelListing(1);
         expect(await contract1.ownerOf(1)).to.equal(addr1.address);
        })
-        
-        it("revert if cancel nft is not done by actual owner",async function(){
+
+
+
+       it("revert if cancel nft is not done by actual owner",async function(){
         await contract1.safeMint(addr1.address,1);
         await contract1.connect(addr1).approve(contract.address,1);
         await contract.connect(addr1).englishStart(contract1.address,1,20,1);
-        expect(await contract.connect(addr2).cancelListing(1)).to.revertedWith("NOT THE ACTUAL OWNER");
+        await expect( contract.connect(addr2).cancelListing(1)).to.revertedWith("NOT THE ACTUAL OWNER");
        })
 
 
@@ -212,7 +213,7 @@ describe("Marketplace Contract",function(){
         await contract1.connect(addr1).approve(contract.address,1);
         await contract.connect(addr1).englishStart(contract1.address,1,20,1);
         await contract.connect(addr2).englishBid(1,{value:ethers.utils.parseEther("2")});
-        expect(await contract.connect(addr3).fixedPricebuy(1,{value:ethers.utils.parseEther("2")})).to.revertedWith("INVALID BUY OPTION");
+        await expect( contract.connect(addr3).fixedPricebuy(1,{value:ethers.utils.parseEther("2")})).to.revertedWith("INVALID BUY OPTION");
        })
 
 
