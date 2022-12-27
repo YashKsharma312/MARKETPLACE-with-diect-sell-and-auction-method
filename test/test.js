@@ -67,7 +67,7 @@ describe("Marketplace Contract", function(){
         it("Check send amount is less than listed",async function(){
             await contract1.safeMint(addr1.address,1);
             await contract1.connect(addr1).approve(contract.address,1);
-            await contract.connect(addr1).fixedPricesale(contract1.address,1,2);
+            await contract.connect(addr1).fixedPricesale(contract1.address,1,BigInt(3000000000000000000));
             await expect( contract.connect(addr2).fixedPricebuy(1,{value:ethers.utils.parseEther("1")})).to.revertedWith("Please submit the asking price in order to complete the purchase")
         })
 
