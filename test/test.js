@@ -175,6 +175,13 @@ describe("Marketplace Contract",function(){
         await contract.connect(addr1).cancelListing(1);
         expect(await contract1.ownerOf(1)).to.equal(addr1.address);
        })
+        
+        it("revert if cancel nft is not done by actual owner",async function(){
+        await contract1.safeMint(addr1.address,1);
+        await contract1.connect(addr1).approve(contract.address,1);
+        await contract.connect(addr1).englishStart(contract1.address,1,20,1);
+        expect(await contract.connect(addr2).cancelListing(1)).to.revertedWith("NOT THE ACTUAL OWNER");
+       })
 
 
 
