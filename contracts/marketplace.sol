@@ -228,6 +228,11 @@ contract Marketplace {
         bids[itemId][msg.sender]=msg.value;
         
     }
+    
+    
+    function getHighestBid(uint itemId) public view returns (uint){
+        return idToEnglishAuction[itemId].highestBid;
+    } 
 
    
     //function to end bid and transfer nft and amount to seller
