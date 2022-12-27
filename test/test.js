@@ -147,7 +147,24 @@ describe("Marketplace Contract",function(){
 
         })
 
+        
+        it("Check if the entry amount in dutch auction is less than or equal to 0",async function(){
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            expect(await contract.connect(addr1).dutchBid(contract1.address,1,100,1,100,10)).to.revertedWith("Price must be at least 1 wei")
+        })
 
+        
+        it("revert if buying after auction end in dutch",async function(){
+            function sleep(ms) {
+                return new Promise(resolve => setTimeout(resolve, ms));
+            }
+            await contract1.safeMint(addr1.address,1);
+            await contract1.connect(addr1).approve(contract.address,1);
+            await contract.connect(addr1).dutchBid(contract1.address,1,100,1,100,10);
+            await sleep(100);
+            expect(await contract.connect(addr2).buyDutch(1,{value:ethers.utils.parseEther("100")})).to.revertedWith("auction expired")
+        })
 
 
 
